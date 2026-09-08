@@ -52,7 +52,8 @@ class AttendanceService:
                 try:
                     self._find_refresh_button(driver).click()
                 except TimeoutException:
-                    pass
+                    time.sleep(self.REFRESH_INTERVAL)
+                    continue
 
                 try:
                     self._find_start_button(driver).click()
