@@ -9,6 +9,8 @@ from logger_config import log_message
 
 class ScheduleService:
 
+    ELEMENT_TIMEOUT = 20
+
     def __init__(self, browser, auth_service):
         self.browser = browser
         self.auth_service = auth_service
@@ -22,9 +24,8 @@ class ScheduleService:
             self.auth_service.open_schedule()
 
             driver = self.browser.driver
-            log_message("Получение расписания")
 
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, self.ELEMENT_TIMEOUT).until(
                 EC.presence_of_element_located(
                     (By.CLASS_NAME, "simple-little-table")
                 )
@@ -47,7 +48,9 @@ class ScheduleService:
 
                 try:
                     time_text = cells[0].text
-                    start_time = time_text.split("(")[1].split("-")[0].zfill(5)
+                    start_time = (
+                        time_text.split("(")[1].split("-")[0].zfill(5)
+                    )
 
                     lesson_name = cells[1].find_element(
                         By.TAG_NAME, "b"
@@ -59,12 +62,9 @@ class ScheduleService:
                 except (IndexError, ValueError):
                     continue
                 except Exception as exc:
-                    log_message(f"Ошибка чтения строки расписания: {exc}")
-
-            log_message(f"Расписание на {now_date}")
-
-            for time_key, lesson in schedule_data.items():
-                log_message(f"{time_key} — {lesson['name']}")
+                    log_message(
+                        f"Ошибка чтения строки расписания: {exc}"
+                    )
 
             return schedule_data
 
