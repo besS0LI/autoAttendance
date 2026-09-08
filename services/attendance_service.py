@@ -10,19 +10,22 @@ from logger_config import log_message
 
 class AttendanceService:
 
+    REFRESH_INTERVAL = 300  # 5 минут
+    ELEMENT_TIMEOUT = 20
+
     def __init__(self, browser, auth_service):
         self.browser = browser
         self.auth_service = auth_service
 
-    def _find_start_button(self, driver, timeout=3):
-        return WebDriverWait(driver, timeout).until(
+    def _find_start_button(self, driver):
+        return WebDriverWait(driver, self.ELEMENT_TIMEOUT).until(
             EC.element_to_be_clickable(
                 (By.XPATH, "//a[contains(@onclick, 'open_zan')]")
             )
         )
 
-    def _find_refresh_button(self, driver, timeout=3):
-        return WebDriverWait(driver, timeout).until(
+    def _find_refresh_button(self, driver):
+        return WebDriverWait(driver, self.ELEMENT_TIMEOUT).until(
             EC.element_to_be_clickable(
                 (By.XPATH, "//a[contains(@onclick, 'update_zan')]")
             )
@@ -36,38 +39,29 @@ class AttendanceService:
             self.auth_service.open_schedule()
             driver = self.browser.driver
 
-            try:
-                start_button = self._find_start_button(driver)
-                log_message("Кнопка Начать занятие найдена")
-                start_button.click()
-                log_message(
-                    f'Поставлена отметка на паре "{lesson["name"]}"'
-                )
-                return
-            except TimeoutException:
-                log_message("Кнопка Начать занятие пока отсутствует")
-
             while True:
                 try:
-                    refresh_button = self._find_refresh_button(driver)
-                    log_message("Кнопка Обновить найдена")
-                    refresh_button.click()
-                except TimeoutException:
-                    log_message("Кнопка Обновить не найдена")
-                    time.sleep(10)
-                    continue
-
-                try:
-                    start_button = self._find_start_button(driver)
-                    log_message("Кнопка Начать занятие найдена")
-                    start_button.click()
+                    self._find_start_button(driver).click()
                     log_message(
                         f'Поставлена отметка на паре "{lesson["name"]}"'
                     )
                     return
                 except TimeoutException:
-                    log_message("Ожидание появления кнопки Начать занятие")
-                    time.sleep(60)
+                    pass
+
+                try:
+                    self._find_refresh_button(driver).click()
+                except TimeoutException:
+                    pass
+
+                try:
+                    self._find_start_button(driver).click()
+                    log_message(
+                        f'Поставлена отметка на паре "{lesson["name"]}"'
+                    )
+                    return
+                except TimeoutException:
+                    time.sleep(self.REFRESH_INTERVAL)
 
         except WebDriverException as exc:
             log_message(f"Ошибка WebDriver при отметке: {exc}")
