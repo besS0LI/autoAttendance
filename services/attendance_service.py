@@ -1,3 +1,4 @@
+import re
 import time
 
 from selenium.common.exceptions import TimeoutException, WebDriverException
@@ -31,6 +32,35 @@ class AttendanceService:
             )
         )
 
+    def _get_attendance_span_id(self, button):
+        return button.find_element(
+            By.XPATH, "./.."
+        ).get_attribute("id")
+
+    def _wait_for_attendance_confirmation(self, driver, span_id):
+        def is_confirmed(d):
+            span = d.find_element(By.ID, span_id)
+
+            return (
+                not span.find_elements(By.TAG_NAME, "a")
+                and bool(re.fullmatch(r"\d{2}:\d{2}", span.text.strip()))
+            )
+
+        WebDriverWait(driver, self.ELEMENT_TIMEOUT).until(is_confirmed)
+
+    def _try_mark_attendance(self, driver, lesson_name):
+        button = self._find_start_button(driver)
+        span_id = self._get_attendance_span_id(button)
+
+        button.click()
+
+        self._wait_for_attendance_confirmation(driver, span_id)
+
+        log_message(
+            f'Отметка подтверждена на паре "{lesson_name}"'
+        )
+        return True
+
     def mark_attendance(self, lesson):
         log_message(f"Начата обработка занятия: {lesson['name']}")
 
@@ -41,13 +71,16 @@ class AttendanceService:
 
             while True:
                 try:
-                    self._find_start_button(driver).click()
-                    log_message(
-                        f'Поставлена отметка на паре "{lesson["name"]}"'
+                    self._try_mark_attendance(
+                        driver,
+                        lesson["name"],
                     )
                     return
                 except TimeoutException:
-                    pass
+                    log_message(
+                        f'Отметка на паре "{lesson["name"]}" '
+                        f"не подтверждена"
+                    )
 
                 try:
                     self._find_refresh_button(driver).click()
@@ -56,12 +89,16 @@ class AttendanceService:
                     continue
 
                 try:
-                    self._find_start_button(driver).click()
-                    log_message(
-                        f'Поставлена отметка на паре "{lesson["name"]}"'
+                    self._try_mark_attendance(
+                        driver,
+                        lesson["name"],
                     )
                     return
                 except TimeoutException:
+                    log_message(
+                        f'Отметка на паре "{lesson["name"]}" '
+                        f"не подтверждена после обновления"
+                    )
                     time.sleep(self.REFRESH_INTERVAL)
 
         except WebDriverException as exc:
