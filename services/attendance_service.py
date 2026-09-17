@@ -1,5 +1,6 @@
 import re
 import time
+from datetime import datetime, timedelta
 
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
@@ -13,6 +14,7 @@ class AttendanceService:
 
     REFRESH_INTERVAL = 300  # 5 минут
     ELEMENT_TIMEOUT = 20
+    ATTENDANCE_WINDOW = timedelta(hours=1, minutes=35)
 
     def __init__(self, browser, auth_service):
         self.browser = browser
@@ -61,45 +63,82 @@ class AttendanceService:
         )
         return True
 
+    def _get_attendance_deadline(self, lesson):
+        now = datetime.now()
+        lesson_start = datetime.strptime(
+            lesson["start_time"], "%H:%M"
+        ).replace(
+            year=now.year,
+            month=now.month,
+            day=now.day,
+        )
+        return lesson_start + self.ATTENDANCE_WINDOW
+
+    def _is_expired(self, deadline, lesson_name):
+        if datetime.now() >= deadline:
+            log_message(
+                f'Время отметки пары "{lesson_name}" истекло. '
+                f"Попытки прекращены"
+            )
+            return True
+        return False
+
+    def _sleep_until_retry(self, deadline):
+        remaining = (deadline - datetime.now()).total_seconds()
+        if remaining <= 0:
+            return
+        time.sleep(min(self.REFRESH_INTERVAL, remaining))
+
     def mark_attendance(self, lesson):
-        log_message(f"Начата обработка занятия: {lesson['name']}")
+        lesson_name = lesson["name"]
+        deadline = self._get_attendance_deadline(lesson)
+
+        log_message(f"Начата обработка занятия: {lesson_name}")
 
         try:
             self.browser.start()
             self.auth_service.open_schedule()
             driver = self.browser.driver
 
-            while True:
+            while not self._is_expired(deadline, lesson_name):
                 try:
                     self._try_mark_attendance(
                         driver,
-                        lesson["name"],
+                        lesson_name,
                     )
-                    return
+                    return True
                 except TimeoutException:
                     log_message(
-                        f'Отметка на паре "{lesson["name"]}" '
+                        f'Отметка на паре "{lesson_name}" '
                         f"не подтверждена"
                     )
+
+                if self._is_expired(deadline, lesson_name):
+                    return False
 
                 try:
                     self._find_refresh_button(driver).click()
                 except TimeoutException:
-                    time.sleep(self.REFRESH_INTERVAL)
+                    self._sleep_until_retry(deadline)
                     continue
+
+                if self._is_expired(deadline, lesson_name):
+                    return False
 
                 try:
                     self._try_mark_attendance(
                         driver,
-                        lesson["name"],
+                        lesson_name,
                     )
-                    return
+                    return True
                 except TimeoutException:
                     log_message(
-                        f'Отметка на паре "{lesson["name"]}" '
+                        f'Отметка на паре "{lesson_name}" '
                         f"не подтверждена после обновления"
                     )
-                    time.sleep(self.REFRESH_INTERVAL)
+                    self._sleep_until_retry(deadline)
+
+            return False
 
         except WebDriverException as exc:
             log_message(f"Ошибка WebDriver при отметке: {exc}")
