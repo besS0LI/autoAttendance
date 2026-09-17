@@ -17,6 +17,10 @@ class SchedulerManager:
         self.attendance_service = attendance_service
         self.schedule_loaded_for_date = None
 
+    def _run_attendance_job(self, lesson_data):
+        self.attendance_service.mark_attendance(lesson_data)
+        return schedule.CancelJob
+
     def _schedule_today(self):
         today = datetime.now().date()
 
@@ -60,7 +64,7 @@ class SchedulerManager:
 
             if now < lesson_start:
                 schedule.every().day.at(lesson_time).do(
-                    self.attendance_service.mark_attendance,
+                    self._run_attendance_job,
                     lesson_data,
                 )
                 jobs_added += 1
