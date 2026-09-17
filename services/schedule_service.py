@@ -57,7 +57,8 @@ class ScheduleService:
                     ).text.strip()
 
                     schedule_data[start_time] = {
-                        "name": lesson_name
+                        "name": lesson_name,
+                        "start_time": start_time,
                     }
                 except (IndexError, ValueError):
                     continue
